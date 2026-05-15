@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Go – 19×19</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1e1e1e;
+      color: #ddd;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+      gap: 12px;
+    }
+    h1 { font-size: 1.4rem; color: #ccc; letter-spacing: 1px; }
+    #info {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #turn-display { font-size: 1.15rem; font-weight: bold; min-width: 200px; text-align: center; }
+    .cap-box {
+      background: #2e2e2e;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 0.9rem;
+    }
+    canvas { cursor: crosshair; display: block; max-width: 100%; }
+    #controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    button {
+      background: #333;
+      color: #ddd;
+      border: 1px solid #555;
+      border-radius: 6px;
+      padding: 7px 18px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover:not(:disabled) { background: #444; }
+    button:disabled { opacity: 0.35; cursor: default; }
+    #scoring-panel {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 10px;
+      padding: 14px 20px;
+      text-align: center;
+      max-width: 500px;
+    }
+    #scoring-panel p { color: #aaa; font-size: 0.88rem; margin-bottom: 10px; line-height: 1.5; }
+    #scoring-panel .btns { display: flex; gap: 10px; justify-content: center; }
+    #result {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 10px;
+      padding: 16px 24px;
+      text-align: center;
+      max-width: 520px;
+    }
+    #result h2 { font-size: 1.3rem; margin-bottom: 10px; color: #fff; }
+    #result table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    #result td, #result th { padding: 5px 10px; border: 1px solid #444; text-align: center; }
+    #result th { background: #333; }
+    #msg {
+      min-height: 1.2em;
+      font-size: 0.85rem;
+      color: #f80;
+    }
+  </style>
+</head>
+<body>
+  <h1>Go · 19×19</h1>
+
+  <div id="info">
+    <div id="turn-display">⚫ Black's turn</div>
+    <div class="cap-box">⚫ Captures: <span id="black-cap">0</span></div>
+    <div class="cap-box">⚪ Captures: <span id="white-cap">0</span></div>
+  </div>
+
+  <canvas id="board"></canvas>
+  <div id="msg"></div>
+
+  <div id="controls">
+    <button id="pass-btn">Pass</button>
+    <button id="resign-btn">Resign</button>
+    <button id="new-btn">New Game</button>
+  </div>
+
+  <div id="scoring-panel" style="display:none">
+    <p>Both players passed. Click stones to mark them <b>dead</b> (whole group toggles).<br>
+       Click <b>Count Score</b> when both agree on dead stones.</p>
+    <div class="btns">
+      <button id="score-btn">Count Score</button>
+      <button id="resume-btn">Resume Play</button>
+    </div>
+  </div>
+
+  <div id="result" style="display:none"></div>
+
+<script>
+const SIZE  = 19;
+const CELL  = 34;
+const MAR   = 42;   // margin for coordinate labels
+const COLS  = 'ABCDEFGHJKLMNOPQRST'; // 19 cols, skipping I
+const HOSHI = [3, 9, 15];
+const KOMI  = 6.5;
+const CW    = MAR + (SIZE - 1) * CELL + MAR;
+
+const canvas = document.getElementById('board');
+const ctx    = canvas.getContext('2d');
+canvas.width  = CW;
+canvas.height = CW;
+
+// ── State ────────────────────────────────────────────────────────────────────
+let board, current, blackCap, whiteCap;
+let prevBoard, passCount, phase, deadSet, lastMove;
+let hover = null;
+let tmap  = null;  // territory map (filled after score count)
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+function initGame() {
+  board     = Array.from({length: SIZE}, () => new Int8Array(SIZE));
+  current   = 1;
+  blackCap  = 0;
+  whiteCap  = 0;
+  prevBoard = null;
+  passCount = 0;
+  phase     = 'play';
+  deadSet   = new Set();
+  lastMove  = null;
+  tmap      = null;
+
+  document.getElementById('scoring-panel').style.display = 'none';
+  document.getElementById('result').style.display        = 'none';
+  document.getElementById('pass-btn').disabled           = false;
+  setMsg('');
+  updateInfo();
+  draw();
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function nbrs(r, c) {
+  const out = [];
+  if (r > 0)       out.push([r-1, c]);
+  if (r < SIZE-1)  out.push([r+1, c]);
+  if (c > 0)       out.push([r, c-1]);
+  if (c < SIZE-1)  out.push([r, c+1]);
+  return out;
+}
+
+function getGroup(r, c, b) {
+  const color = b[r][c];
+  if (!color) return [];
+  const vis = new Uint8Array(SIZE * SIZE);
+  const stk = [r * SIZE + c];
+  vis[r * SIZE + c] = 1;
+  const result = [];
+  while (stk.length) {
+    const idx = stk.pop();
+    result.push([Math.floor(idx / SIZE), idx % SIZE]);
+    const cr = Math.floor(idx / SIZE), cc = idx % SIZE;
+    for (const [nr, nc] of nbrs(cr, cc)) {
+      const ni = nr * SIZE + nc;
+      if (!vis[ni] && b[nr][nc] === color) { vis[ni] = 1; stk.push(ni); }
+    }
+  }
+  return result;
+}
+
+function hasLiberty(group, b) {
+  for (const [r, c] of group)
+    for (const [nr, nc] of nbrs(r, c))
+      if (b[nr][nc] === 0) return true;
+  return false;
+}
+
+function copyBoard(b) { return b.map(row => row.slice()); }
+
+function boardsEqual(a, b) {
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (a[r][c] !== b[r][c]) return false;
+  return true;
+}
+
+// ── Moves ────────────────────────────────────────────────────────────────────
+function placeStone(r, c) {
+  if (phase !== 'play' || board[r][c] !== 0) return false;
+  const opp = current === 1 ? 2 : 1;
+  const nb  = copyBoard(board);
+  nb[r][c]  = current;
+
+  let captured = 0;
+  for (const [nr, nc] of nbrs(r, c)) {
+    if (nb[nr][nc] === opp) {
+      const grp = getGroup(nr, nc, nb);
+      if (!hasLiberty(grp, nb)) {
+        for (const [gr, gc] of grp) { nb[gr][gc] = 0; captured++; }
+      }
+    }
+  }
+
+  if (!hasLiberty(getGroup(r, c, nb), nb)) { setMsg('Illegal move: suicide'); return false; }
+  if (prevBoard && boardsEqual(nb, prevBoard)) { setMsg('Illegal move: ko'); return false; }
+
+  prevBoard = copyBoard(board);
+  board     = nb;
+  if (current === 1) blackCap += captured;
+  else               whiteCap += captured;
+
+  lastMove  = [r, c];
+  passCount = 0;
+  current   = opp;
+  setMsg('');
+  updateInfo();
+  draw();
+  return true;
+}
+
+function doPass() {
+  if (phase !== 'play') return;
+  prevBoard = null;
+  lastMove  = null;
+  passCount++;
+  if (passCount >= 2) { enterScoring(); return; }
+  current = current === 1 ? 2 : 1;
+  setMsg((current === 1 ? 'White' : 'Black') + ' passed.');
+  updateInfo();
+  draw();
+}
+
+function enterScoring() {
+  phase   = 'scoring';
+  deadSet = new Set();
+  tmap    = null;
+  document.getElementById('scoring-panel').style.display = 'block';
+  document.getElementById('pass-btn').disabled = true;
+  setMsg('');
+  updateInfo();
+  draw();
+}
+
+// ── Dead stone toggle ────────────────────────────────────────────────────────
+function toggleDead(r, c) {
+  if (board[r][c] === 0) return;
+  const grp  = getGroup(r, c, board);
+  const key0 = grp[0][0] * SIZE + grp[0][1];
+  const was   = deadSet.has(key0);
+  for (const [gr, gc] of grp) {
+    const k = gr * SIZE + gc;
+    was ? deadSet.delete(k) : deadSet.add(k);
+  }
+  tmap = null;
+  draw();
+}
+
+// ── Scoring ──────────────────────────────────────────────────────────────────
+function computeScore() {
+  const sb = copyBoard(board);
+  const deadByColor = [0, 0, 0];
+
+  for (const k of deadSet) {
+    const r = Math.floor(k / SIZE), c = k % SIZE;
+    deadByColor[sb[r][c]]++;
+    sb[r][c] = 0;
+  }
+
+  const newTmap = Array.from({length: SIZE}, () => new Int8Array(SIZE));
+  const visited = new Uint8Array(SIZE * SIZE);
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const idx = r * SIZE + c;
+      if (sb[r][c] !== 0 || visited[idx]) continue;
+
+      const region  = [];
+      const borders = new Set();
+      const stk     = [idx];
+      const rv      = new Uint8Array(SIZE * SIZE);
+      rv[idx]       = 1;
+
+      while (stk.length) {
+        const i  = stk.pop();
+        const cr = Math.floor(i / SIZE), cc = i % SIZE;
+        region.push([cr, cc]);
+        visited[i] = 1;
+        for (const [nr, nc] of nbrs(cr, cc)) {
+          const ni = nr * SIZE + nc;
+          if (sb[nr][nc] === 0) { if (!rv[ni]) { rv[ni] = 1; stk.push(ni); } }
+          else borders.add(sb[nr][nc]);
+        }
+      }
+
+      const owner = borders.size === 1 ? [...borders][0] : 0;
+      for (const [tr, tc] of region) newTmap[tr][tc] = owner;
+    }
+  }
+
+  let blackTerr = 0, whiteTerr = 0;
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++) {
+      if (newTmap[r][c] === 1) blackTerr++;
+      else if (newTmap[r][c] === 2) whiteTerr++;
+    }
+
+  return { tmap: newTmap, deadByColor, blackTerr, whiteTerr };
+}
+
+function calculateScore() {
+  const { tmap: t, deadByColor, blackTerr, whiteTerr } = computeScore();
+  tmap = t;
+
+  const bScore = blackTerr + blackCap + deadByColor[2];
+  const wScore = whiteTerr + whiteCap + deadByColor[1] + KOMI;
+
+  const winner = bScore > wScore ? 'Black' : 'White';
+  const margin = Math.abs(bScore - wScore).toFixed(1);
+
+  const resultDiv = document.getElementById('result');
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = `
+    <h2>${winner === 'Black' ? '⚫' : '⚪'} ${winner} wins by ${margin} points</h2>
+    <table>
+      <tr><th></th><th>Territory</th><th>Captures</th><th>Dead opp.</th><th>Score</th></tr>
+      <tr>
+        <td>⚫ Black</td><td>${blackTerr}</td><td>${blackCap}</td><td>${deadByColor[2]}</td>
+        <td><strong>${bScore}</strong></td>
+      </tr>
+      <tr>
+        <td>⚪ White</td><td>${whiteTerr}</td><td>${whiteCap}</td><td>${deadByColor[1]}</td>
+        <td><strong>${wScore.toFixed(1)}</strong> (incl. ${KOMI} komi)</td>
+      </tr>
+    </table>`;
+
+  draw();
+}
+
+// ── Coordinate helpers ───────────────────────────────────────────────────────
+function boardXY(r, c) {
+  return [MAR + c * CELL, MAR + r * CELL];
+}
+
+function screenToBoard(cx, cy) {
+  const rect = canvas.getBoundingClientRect();
+  const sx   = canvas.width  / rect.width;
+  const sy   = canvas.height / rect.height;
+  const bx   = (cx - rect.left) * sx;
+  const by   = (cy - rect.top)  * sy;
+  const c    = Math.round((bx - MAR) / CELL);
+  const r    = Math.round((by - MAR) / CELL);
+  if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return null;
+  return [r, c];
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, CW, CW);
+
+  // Board wood color
+  ctx.fillStyle = '#c8a84b';
+  ctx.fillRect(0, 0, CW, CW);
+
+  // Subtle wood grain border shading
+  const grad = ctx.createLinearGradient(0, 0, CW, CW);
+  grad.addColorStop(0,   'rgba(255,220,120,0.18)');
+  grad.addColorStop(0.5, 'rgba(0,0,0,0)');
+  grad.addColorStop(1,   'rgba(0,0,0,0.12)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CW, CW);
+
+  // Grid lines
+  ctx.strokeStyle = '#7a5c1a';
+  ctx.lineWidth   = 1;
+  for (let i = 0; i < SIZE; i++) {
+    const [x0] = boardXY(0, i);
+    const [, y0] = boardXY(i, 0);
+    const [xN] = boardXY(SIZE-1, i);
+    const [, yN] = boardXY(i, SIZE-1);
+    ctx.beginPath(); ctx.moveTo(x0, MAR); ctx.lineTo(xN, MAR + (SIZE-1)*CELL); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(MAR, y0); ctx.lineTo(MAR + (SIZE-1)*CELL, yN); ctx.stroke();
+  }
+
+  // Correct: vertical lines (column = i, rows 0..SIZE-1)
+  ctx.strokeStyle = '#7a5c1a';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < SIZE; i++) {
+    const x = MAR + i * CELL;
+    ctx.beginPath(); ctx.moveTo(x, MAR); ctx.lineTo(x, MAR + (SIZE-1)*CELL); ctx.stroke();
+  }
+  for (let i = 0; i < SIZE; i++) {
+    const y = MAR + i * CELL;
+    ctx.beginPath(); ctx.moveTo(MAR, y); ctx.lineTo(MAR + (SIZE-1)*CELL, y); ctx.stroke();
+  }
+
+  // Star points (hoshi)
+  ctx.fillStyle = '#5a3e0e';
+  for (const r of HOSHI) for (const c of HOSHI) {
+    const [x, y] = boardXY(r, c);
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Coordinate labels
+  ctx.fillStyle   = '#5a3e0e';
+  ctx.font        = '11px monospace';
+  ctx.textAlign   = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < SIZE; i++) {
+    const x = MAR + i * CELL;
+    ctx.fillText(COLS[i], x, MAR / 2);
+    ctx.fillText(COLS[i], x, CW - MAR / 2);
+  }
+  ctx.textAlign = 'right';
+  for (let i = 0; i < SIZE; i++) {
+    const y   = MAR + i * CELL;
+    const num = SIZE - i;  // 19 at top, 1 at bottom (standard)
+    ctx.fillText(num, MAR - 8, y);
+    ctx.textAlign = 'left';
+    ctx.fillText(num, CW - MAR + 8, y);
+    ctx.textAlign = 'right';
+  }
+
+  // Territory overlay (shown after score count)
+  if (tmap) {
+    const sq = CELL * 0.32;
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+      const owner = tmap[r][c];
+      if (!owner || board[r][c] !== 0) continue;
+      const [x, y] = boardXY(r, c);
+      ctx.fillStyle = owner === 1 ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)';
+      ctx.fillRect(x - sq/2, y - sq/2, sq, sq);
+    }
+  }
+
+  // Stones
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (board[r][c]) {
+      const isDead = deadSet.has(r * SIZE + c);
+      drawStone(r, c, board[r][c], isDead ? 0.35 : 1.0);
+    }
+  }
+
+  // Last move marker
+  if (lastMove) {
+    const [lr, lc] = lastMove;
+    const [x, y]   = boardXY(lr, lc);
+    ctx.strokeStyle = board[lr][lc] === 1 ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.6)';
+    ctx.lineWidth   = 2;
+    ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // Hover ghost stone
+  if (hover && phase === 'play') {
+    const [r, c] = hover;
+    if (board[r][c] === 0) drawStone(r, c, current, 0.38);
+  }
+}
+
+function drawStone(r, c, color, alpha) {
+  const [x, y] = boardXY(r, c);
+  const rad    = CELL / 2 - 1.5;
+  ctx.globalAlpha = alpha;
+
+  const g = ctx.createRadialGradient(
+    x - rad * 0.32, y - rad * 0.32, 0.5,
+    x, y, rad
+  );
+  if (color === 1) {
+    g.addColorStop(0, '#828282');
+    g.addColorStop(1, '#0e0e0e');
+  } else {
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(1, '#c2c2c2');
+  }
+  ctx.beginPath();
+  ctx.arc(x, y, rad, 0, Math.PI * 2);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = color === 1 ? '#222' : '#999';
+  ctx.lineWidth   = 0.8;
+  ctx.stroke();
+
+  ctx.globalAlpha = 1.0;
+}
+
+function updateInfo() {
+  const el = document.getElementById('turn-display');
+  if (phase === 'play') {
+    el.textContent = current === 1 ? '⚫ Black\'s turn' : '⚪ White\'s turn';
+  } else if (phase === 'scoring') {
+    el.textContent = 'Scoring — mark dead stones';
+  } else {
+    el.textContent = 'Game over';
+  }
+  document.getElementById('black-cap').textContent = blackCap;
+  document.getElementById('white-cap').textContent = whiteCap;
+}
+
+function setMsg(m) { document.getElementById('msg').textContent = m; }
+
+// ── Events ────────────────────────────────────────────────────────────────────
+canvas.addEventListener('click', e => {
+  const pos = screenToBoard(e.clientX, e.clientY);
+  if (!pos) return;
+  const [r, c] = pos;
+  if (phase === 'play') placeStone(r, c);
+  else if (phase === 'scoring') { toggleDead(r, c); }
+});
+
+canvas.addEventListener('mousemove', e => {
+  hover = screenToBoard(e.clientX, e.clientY);
+  if (phase === 'play') draw();
+});
+
+canvas.addEventListener('mouseleave', () => { hover = null; if (phase === 'play') draw(); });
+
+document.getElementById('pass-btn').addEventListener('click', doPass);
+
+document.getElementById('resign-btn').addEventListener('click', () => {
+  if (phase !== 'play') return;
+  const winner = current === 1 ? '⚪ White' : '⚫ Black';
+  const res = document.getElementById('result');
+  res.style.display = 'block';
+  res.innerHTML = `<h2>${winner} wins by resignation</h2>`;
+  phase = 'done';
+  updateInfo();
+});
+
+document.getElementById('new-btn').addEventListener('click', initGame);
+
+document.getElementById('score-btn').addEventListener('click', calculateScore);
+
+document.getElementById('resume-btn').addEventListener('click', () => {
+  phase     = 'play';
+  passCount = 0;
+  deadSet   = new Set();
+  tmap      = null;
+  document.getElementById('scoring-panel').style.display = 'none';
+  document.getElementById('result').style.display        = 'none';
+  document.getElementById('pass-btn').disabled           = false;
+  setMsg('');
+  updateInfo();
+  draw();
+});
+
+initGame();
+</script>
+</body>
+</html>
