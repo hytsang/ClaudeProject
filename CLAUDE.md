@@ -9,7 +9,9 @@ A collection of browser-playable games implemented as self-contained single HTML
 ## Files
 
 - `tictactoe.html` — 2-player Tic Tac Toe with score tracking
+  - Generated with prompt: *"make tic tac toe that i can play on the web"*
 - `go.html` — 19×19 Go with full Japanese rules scoring (territory counting, dead stone marking, komi)
+  - Generated with prompt: *"make a 19 by 19 Go game that i can play on web. make it auto count the result with Japanese Go rules."*
 
 ## Architecture
 
