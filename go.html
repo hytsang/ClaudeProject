@@ -543,7 +543,7 @@ function joinGame(code) {
     console.log('[Guest] Peer opened with ID:', id);
     setConnectionStatus('Finding room...', '');
     console.log('[Guest] Connecting to room:', roomCode);
-    conn = peer.connect(roomCode, { reliable: true });
+    conn = peer.connect(roomCode, { serialization: 'json', reliable: true });
     console.log('[Guest] Connection object created:', conn);
     setupConnection(conn);
 
@@ -654,7 +654,7 @@ function attemptReconnect() {
       return;
     }
     updateConnIndicator('connecting');
-    conn = peer.connect(roomCode, { reliable: true });
+    conn = peer.connect(roomCode, { serialization: 'json', reliable: true });
     setupConnection(conn);
   }, 3000);
 }
