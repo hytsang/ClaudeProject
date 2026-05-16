@@ -392,14 +392,30 @@ let chatHistory = [];      // Chat message history
 let joinTimeout = null;    // Timeout for joining
 
 // PeerJS configuration with ICE servers for NAT traversal
+// Includes TURN servers for users behind strict NAT/firewalls
 const PEER_CONFIG = {
   debug: 1,
   config: {
     iceServers: [
+      // STUN servers for NAT discovery
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun.cloudflare.com:3478' }
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      // TURN servers for relay (required for ~30% of users)
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      }
     ]
   }
 };
@@ -508,17 +524,24 @@ function joinGame(code) {
   peer = new Peer(PEER_CONFIG);
 
   peer.on('open', () => {
-    setConnectionStatus('Connecting...', '');
+    setConnectionStatus('Finding room...', '');
     conn = peer.connect(roomCode, { reliable: true });
     setupConnection(conn);
 
-    // Set timeout for connection
+    // Update status after signaling
+    setTimeout(() => {
+      if (!connected) {
+        setConnectionStatus('Establishing connection...', '');
+      }
+    }, 3000);
+
+    // Set timeout for connection (30 seconds to allow for TURN negotiation)
     joinTimeout = setTimeout(() => {
       if (!connected) {
         setConnectionStatus('Connection timed out. Check room code and try again.', 'error');
         showRetryButton();
       }
-    }, 15000);
+    }, 30000);
   });
 
   peer.on('error', handlePeerError);
@@ -558,6 +581,14 @@ function setupConnection(connection) {
   });
 
   connection.on('data', handleMessage);
+
+  // Monitor ICE connection state for debugging
+  connection.on('iceStateChanged', state => {
+    console.log('ICE state:', state);
+    if (state === 'disconnected' || state === 'failed') {
+      setConnectionStatus('Connection unstable, reconnecting...', '');
+    }
+  });
 
   connection.on('close', () => {
     connected = false;
