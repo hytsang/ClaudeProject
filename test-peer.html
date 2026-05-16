@@ -45,10 +45,12 @@ function generateCode() {
   return code;
 }
 
-// Metered.ca TURN servers
+// Metered.ca TURN servers - force relay mode for testing
 const PEER_CONFIG = {
   debug: 3,
   config: {
+    iceTransportPolicy: 'relay',  // Force TURN relay only
+    iceCandidatePoolSize: 10,     // Pre-gather candidates
     iceServers: [
       { urls: 'stun:stun.relay.metered.ca:80' },
       {
