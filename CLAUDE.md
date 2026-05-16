@@ -39,6 +39,7 @@ Each game is a single HTML file with inline CSS and JavaScript. All game state l
 - Reconnection: guest auto-retries every 3 seconds if disconnected; host accepts new connections when `conn.open` is false
 - `attemptReconnect()` — guest reconnection logic: checks peer server connection before retrying
 - `handleConnection()` — host accepts reconnections by checking `conn && conn.open` (not just `conn`)
+- `startKeepalive()` / `stopKeepalive()` — host keepalive every 30 seconds to maintain room while waiting for guest (supports delayed joins 10+ minutes)
 - Connection options: `{ serialization: 'json', reliable: true }` required for TURN relay compatibility
 
 ### go.html hosting & access
