@@ -392,35 +392,21 @@ let chatHistory = [];      // Chat message history
 let joinTimeout = null;    // Timeout for joining
 
 // PeerJS configuration with ICE servers for NAT traversal
-// Includes TURN servers for users behind strict NAT/firewalls
 const PEER_CONFIG = {
-  host: '0.peerjs.com',
-  port: 443,
-  secure: true,
-  debug: 2,  // Verbose debugging
+  debug: 2,
   config: {
     iceServers: [
-      // STUN servers for NAT discovery
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      // TURN servers for relay (verified working)
+      { url: 'stun:stun.l.google.com:19302' },
+      { url: 'stun:stun1.l.google.com:19302' },
       {
-        urls: 'turn:numb.viagenie.ca',
+        url: 'turn:numb.viagenie.ca',
         username: 'webrtc@live.com',
         credential: 'muazkh'
       },
       {
-        urls: 'turn:turn.anyfirewall.com:443?transport=tcp',
+        url: 'turn:turn.anyfirewall.com:443?transport=tcp',
         username: 'webrtc',
         credential: 'webrtc'
-      },
-      {
-        urls: 'turn:freestun.net:3478',
-        username: 'free',
-        credential: 'free'
       }
     ]
   }
