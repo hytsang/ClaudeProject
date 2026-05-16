@@ -487,6 +487,8 @@ function resetLobbyUI() {
   setConnectionStatus('');
 }
 
+let keepaliveTimer = null;
+
 function createGame(color) {
   roomCode = generateRoomCode();
   isHost = true;
@@ -503,22 +505,65 @@ function createGame(color) {
     document.getElementById('share-url').textContent = url;
     document.getElementById('room-info').style.display = 'block';
     setConnectionStatus('Waiting for opponent...', '');
+
+    // Start keepalive to maintain connection while waiting
+    startKeepalive();
   });
 
-  peer.on('connection', conn => {
-    console.log('[Host] Incoming connection from:', conn.peer);
-    handleConnection(conn);
+  peer.on('connection', incomingConn => {
+    console.log('[Host] Incoming connection from:', incomingConn.peer);
+    handleConnection(incomingConn);
   });
 
   peer.on('error', err => {
     console.error('[Host] Peer error:', err.type, err);
+    if (err.type === 'unavailable-id') {
+      // Room code already taken, generate new one
+      console.log('[Host] Room code taken, retrying with new code...');
+      createGame(color);
+      return;
+    }
     handlePeerError(err);
   });
 
   peer.on('disconnected', () => {
     console.log('[Host] Disconnected from server, reconnecting...');
+    setConnectionStatus('Reconnecting to server...', '');
     peer.reconnect();
   });
+}
+
+function startKeepalive() {
+  // Clear any existing keepalive
+  if (keepaliveTimer) {
+    clearInterval(keepaliveTimer);
+  }
+
+  // Check connection every 30 seconds
+  keepaliveTimer = setInterval(() => {
+    if (!peer) {
+      clearInterval(keepaliveTimer);
+      keepaliveTimer = null;
+      return;
+    }
+
+    if (peer.disconnected) {
+      console.log('[Keepalive] Peer disconnected, reconnecting...');
+      setConnectionStatus('Reconnecting to server...', '');
+      peer.reconnect();
+    } else if (!peer.open) {
+      console.log('[Keepalive] Peer not open, waiting...');
+    } else {
+      console.log('[Keepalive] Peer alive, room:', roomCode);
+    }
+  }, 30000);
+}
+
+function stopKeepalive() {
+  if (keepaliveTimer) {
+    clearInterval(keepaliveTimer);
+    keepaliveTimer = null;
+  }
 }
 
 function joinGame(code) {
@@ -594,6 +639,7 @@ function setupConnection(connection) {
   connection.on('open', () => {
     console.log('[Setup] Connection OPEN!');
     connected = true;
+    stopKeepalive();  // Stop keepalive once connected
     if (reconnectTimer) {
       clearInterval(reconnectTimer);
       reconnectTimer = null;
@@ -638,7 +684,11 @@ function setupConnection(connection) {
     addSystemMessage('Opponent disconnected');
     setMsg('Opponent disconnected. Waiting for reconnect...');
 
-    if (!isHost && roomCode) {
+    if (isHost) {
+      // Host: restart keepalive to stay connected to server
+      startKeepalive();
+    } else if (roomCode) {
+      // Guest: attempt to reconnect
       attemptReconnect();
     }
   });
