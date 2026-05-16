@@ -571,15 +571,19 @@ function joinGame(code) {
   });
 
   peer.on('disconnected', () => {
-    console.log('[Guest] Disconnected from server');
+    console.log('[Guest] Disconnected from server, reconnecting...');
+    peer.reconnect();
   });
 }
 
 function handleConnection(connection) {
-  if (conn) {
+  // Accept reconnection if old connection is closed
+  if (conn && conn.open) {
+    console.log('[Host] Rejecting connection - already connected');
     connection.close();
     return;
   }
+  console.log('[Host] Accepting connection from:', connection.peer);
   conn = connection;
   setupConnection(conn);
 }
@@ -647,13 +651,30 @@ function setupConnection(connection) {
 function attemptReconnect() {
   if (isHost || connected || reconnectTimer) return;
 
+  console.log('[Reconnect] Starting reconnection attempts...');
   reconnectTimer = setInterval(() => {
     if (connected) {
+      console.log('[Reconnect] Connected, stopping attempts');
       clearInterval(reconnectTimer);
       reconnectTimer = null;
       return;
     }
+
+    // Make sure peer is connected to server
+    if (peer.disconnected) {
+      console.log('[Reconnect] Peer disconnected, reconnecting to server...');
+      peer.reconnect();
+      return;
+    }
+
+    if (!peer.open) {
+      console.log('[Reconnect] Peer not open yet, waiting...');
+      return;
+    }
+
+    console.log('[Reconnect] Attempting to connect to room:', roomCode);
     updateConnIndicator('connecting');
+    setConnectionStatus('Reconnecting...', '');
     conn = peer.connect(roomCode, { serialization: 'json', reliable: true });
     setupConnection(conn);
   }, 3000);
