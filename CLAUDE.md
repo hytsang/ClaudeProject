@@ -36,7 +36,9 @@ Each game is a single HTML file with inline CSS and JavaScript. All game state l
 - `sendState()` — serializes full game state and sends to peer
 - `applyState()` — deserializes and applies received state
 - Message types: `move`, `pass`, `resign`, `state`, `toggleDead`, `countScore`, `resumePlay`, `chat`, `newGame`
-- Reconnection: guest auto-retries every 3 seconds if disconnected
+- Reconnection: guest auto-retries every 3 seconds if disconnected; host accepts new connections when `conn.open` is false
+- `attemptReconnect()` — guest reconnection logic: checks peer server connection before retrying
+- `handleConnection()` — host accepts reconnections by checking `conn && conn.open` (not just `conn`)
 - Connection options: `{ serialization: 'json', reliable: true }` required for TURN relay compatibility
 
 ### go.html hosting & access
