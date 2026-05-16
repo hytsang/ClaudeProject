@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Go – 19×19</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -17,6 +18,40 @@
       gap: 12px;
     }
     h1 { font-size: 1.4rem; color: #ccc; letter-spacing: 1px; }
+    /* Access Gate */
+    #access-gate {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #1e1e1e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    #access-gate.hidden { display: none; }
+    #access-gate h1 { margin-bottom: 24px; }
+    #access-gate .gate-box {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 10px;
+      padding: 24px;
+      text-align: center;
+      max-width: 320px;
+    }
+    #access-gate input {
+      background: #1e1e1e;
+      border: 1px solid #555;
+      border-radius: 6px;
+      color: #ddd;
+      padding: 10px 14px;
+      font-size: 1rem;
+      width: 100%;
+      margin-bottom: 12px;
+    }
+    #access-gate .error { color: #f55; font-size: 0.85rem; margin-bottom: 12px; min-height: 1.2em; }
+    #game-content { display: none; }
+    #game-content.visible { display: contents; }
     #info {
       display: flex;
       gap: 20px;
@@ -73,38 +108,258 @@
       font-size: 0.85rem;
       color: #f80;
     }
+    /* Lobby styles */
+    #lobby {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    #lobby h2 { font-size: 1.1rem; margin-bottom: 16px; color: #ccc; }
+    #lobby .btn-row { display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; }
+    #lobby input {
+      background: #1e1e1e;
+      border: 1px solid #555;
+      border-radius: 6px;
+      color: #ddd;
+      padding: 8px 12px;
+      font-size: 1rem;
+      text-transform: uppercase;
+      width: 120px;
+      text-align: center;
+      letter-spacing: 2px;
+    }
+    #lobby input::placeholder { text-transform: none; letter-spacing: normal; color: #666; }
+    #join-form { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+    #color-select { margin: 12px 0; }
+    #color-select label { margin-right: 16px; cursor: pointer; }
+    #room-info {
+      background: #1e1e1e;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+    #room-info .code {
+      font-size: 1.8rem;
+      font-weight: bold;
+      letter-spacing: 4px;
+      color: #4a9;
+      margin: 8px 0;
+    }
+    #room-info .share-url {
+      font-size: 0.75rem;
+      color: #888;
+      word-break: break-all;
+      margin: 8px 0;
+    }
+    #connection-status {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      color: #888;
+    }
+    #connection-status.connected { color: #4a9; }
+    #connection-status.error { color: #f55; }
+    /* Chat styles */
+    #chat-panel {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      border-radius: 10px;
+      padding: 12px;
+      width: 280px;
+      max-height: 400px;
+      display: flex;
+      flex-direction: column;
+    }
+    #chat-panel h3 { font-size: 0.9rem; color: #888; margin-bottom: 8px; }
+    #chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 8px;
+      min-height: 150px;
+      max-height: 250px;
+      font-size: 0.85rem;
+    }
+    #chat-messages .msg { margin-bottom: 6px; }
+    #chat-messages .msg-black { color: #aaa; }
+    #chat-messages .msg-white { color: #ddd; }
+    #chat-messages .msg-system { color: #666; font-style: italic; }
+    #chat-form { display: flex; gap: 6px; margin-top: 8px; }
+    #chat-input {
+      flex: 1;
+      background: #1e1e1e;
+      border: 1px solid #555;
+      border-radius: 6px;
+      color: #ddd;
+      padding: 6px 10px;
+      font-size: 0.85rem;
+    }
+    #chat-form button { padding: 6px 12px; }
+    /* Connection indicator */
+    #conn-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: #666;
+    }
+    #conn-indicator.connected { background: #4a9; }
+    #conn-indicator.connecting { background: #fa0; }
+    #conn-indicator.disconnected { background: #f55; }
+    /* Game container for side-by-side layout */
+    #game-container {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #game-main { display: flex; flex-direction: column; align-items: center; gap: 12px; }
   </style>
 </head>
 <body>
-  <h1>Go · 19×19</h1>
-
-  <div id="info">
-    <div id="turn-display">⚫ Black's turn</div>
-    <div class="cap-box">⚫ Captures: <span id="black-cap">0</span></div>
-    <div class="cap-box">⚪ Captures: <span id="white-cap">0</span></div>
-  </div>
-
-  <canvas id="board"></canvas>
-  <div id="msg"></div>
-
-  <div id="controls">
-    <button id="pass-btn">Pass</button>
-    <button id="resign-btn">Resign</button>
-    <button id="new-btn">New Game</button>
-  </div>
-
-  <div id="scoring-panel" style="display:none">
-    <p>Both players passed. Click stones to mark them <b>dead</b> (whole group toggles).<br>
-       Click <b>Count Score</b> when both agree on dead stones.</p>
-    <div class="btns">
-      <button id="score-btn">Count Score</button>
-      <button id="resume-btn">Resume Play</button>
+  <!-- Access Gate -->
+  <div id="access-gate">
+    <h1>Go · 19×19</h1>
+    <div class="gate-box">
+      <p style="margin-bottom: 16px; color: #aaa;">Enter access code to play</p>
+      <input type="password" id="access-code" placeholder="Access Code" autocomplete="off">
+      <div class="error" id="gate-error"></div>
+      <button id="gate-submit" style="width: 100%;">Enter</button>
     </div>
   </div>
 
-  <div id="result" style="display:none"></div>
+  <!-- Game Content (hidden until authenticated) -->
+  <div id="game-content">
+  <h1>Go · 19×19</h1>
+
+  <!-- Lobby UI -->
+  <div id="lobby">
+    <h2>Online Multiplayer</h2>
+    <div class="btn-row">
+      <button id="create-btn">Create Game</button>
+      <button id="join-btn">Join Game</button>
+      <button id="local-btn">Play Local</button>
+    </div>
+    <div id="color-select" style="display:none">
+      <span>Play as: </span>
+      <label><input type="radio" name="color" value="1" checked> ⚫ Black</label>
+      <label><input type="radio" name="color" value="2"> ⚪ White</label>
+      <br><br>
+      <button id="create-confirm-btn">Create Room</button>
+      <button id="create-cancel-btn">Cancel</button>
+    </div>
+    <div id="join-form" style="display:none">
+      <input type="text" id="room-input" placeholder="Code" maxlength="6">
+      <button id="connect-btn">Join</button>
+      <button id="join-cancel-btn">Cancel</button>
+    </div>
+    <div id="room-info" style="display:none">
+      <div>Room Code:</div>
+      <div class="code" id="room-code"></div>
+      <div class="share-url" id="share-url"></div>
+      <button id="copy-btn">Copy Link</button>
+    </div>
+    <div id="connection-status"></div>
+  </div>
+
+  <!-- Game UI (hidden until game starts) -->
+  <div id="game-container" style="display:none">
+    <div id="game-main">
+      <div id="info">
+        <span id="conn-indicator"></span>
+        <div id="turn-display">⚫ Black's turn</div>
+        <div class="cap-box">⚫ Captures: <span id="black-cap">0</span></div>
+        <div class="cap-box">⚪ Captures: <span id="white-cap">0</span></div>
+      </div>
+
+      <canvas id="board"></canvas>
+      <div id="msg"></div>
+
+      <div id="controls">
+        <button id="pass-btn">Pass</button>
+        <button id="resign-btn">Resign</button>
+        <button id="new-btn">New Game</button>
+      </div>
+
+      <div id="scoring-panel" style="display:none">
+        <p>Both players passed. Click stones to mark them <b>dead</b> (whole group toggles).<br>
+           Click <b>Count Score</b> when both agree on dead stones.</p>
+        <div class="btns">
+          <button id="score-btn">Count Score</button>
+          <button id="resume-btn">Resume Play</button>
+        </div>
+      </div>
+
+      <div id="result" style="display:none"></div>
+    </div>
+
+    <!-- Chat Panel (shown in online mode) -->
+    <div id="chat-panel" style="display:none">
+      <h3>Chat</h3>
+      <div id="chat-messages"></div>
+      <form id="chat-form">
+        <input type="text" id="chat-input" placeholder="Type a message..." maxlength="200">
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+  </div><!-- end game-content -->
 
 <script>
+// ── Access Control ───────────────────────────────────────────────────────────
+// SHA-256 hash of the access code
+const ACCESS_HASH = 'fa6f11d177039863e5ebc7d721f74851b0cdcb2a1d33b6eef27ac64ec304471f';
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function checkAccess() {
+  // Check if already authenticated in this session
+  if (sessionStorage.getItem('go_authenticated') === 'true') {
+    grantAccess();
+    return;
+  }
+
+  // Show gate
+  document.getElementById('access-gate').classList.remove('hidden');
+  document.getElementById('access-code').focus();
+}
+
+function grantAccess() {
+  sessionStorage.setItem('go_authenticated', 'true');
+  document.getElementById('access-gate').classList.add('hidden');
+  document.getElementById('game-content').classList.add('visible');
+  checkURLParams();
+}
+
+document.getElementById('gate-submit').addEventListener('click', async () => {
+  const code = document.getElementById('access-code').value;
+  const hash = await sha256(code);
+
+  if (hash === ACCESS_HASH) {
+    grantAccess();
+  } else {
+    document.getElementById('gate-error').textContent = 'Invalid access code';
+    document.getElementById('access-code').value = '';
+    document.getElementById('access-code').focus();
+  }
+});
+
+document.getElementById('access-code').addEventListener('keypress', e => {
+  if (e.key === 'Enter') {
+    document.getElementById('gate-submit').click();
+  }
+});
+
+// ── Game Constants ───────────────────────────────────────────────────────────
 const SIZE  = 19;
 const CELL  = 34;
 const MAR   = 42;   // margin for coordinate labels
@@ -123,6 +378,16 @@ let board, current, blackCap, whiteCap;
 let prevBoard, passCount, phase, deadSet, lastMove;
 let hover = null;
 let tmap  = null;  // territory map (filled after score count)
+
+// ── Networking State ─────────────────────────────────────────────────────────
+let peer = null;           // PeerJS instance
+let conn = null;           // DataConnection to opponent
+let isHost = false;        // true if this player created the game
+let myColor = 0;           // 1=black, 2=white (0 = local game)
+let roomCode = null;       // Current room code
+let connected = false;     // Connection status
+let reconnectTimer = null; // For auto-reconnect
+let chatHistory = [];      // Chat message history
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 function initGame() {
@@ -143,6 +408,424 @@ function initGame() {
   setMsg('');
   updateInfo();
   draw();
+}
+
+// ── Networking ───────────────────────────────────────────────────────────────
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+function setConnectionStatus(msg, type = '') {
+  const el = document.getElementById('connection-status');
+  el.textContent = msg;
+  el.className = type;
+}
+
+function updateConnIndicator(status) {
+  const el = document.getElementById('conn-indicator');
+  el.className = status; // 'connected', 'connecting', 'disconnected', or ''
+}
+
+function showLobby() {
+  document.getElementById('lobby').style.display = 'block';
+  document.getElementById('game-container').style.display = 'none';
+  document.getElementById('chat-panel').style.display = 'none';
+  resetLobbyUI();
+}
+
+function hideLobby() {
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('game-container').style.display = 'flex';
+  if (myColor !== 0) {
+    document.getElementById('chat-panel').style.display = 'flex';
+    updateConnIndicator(connected ? 'connected' : 'connecting');
+  }
+}
+
+function resetLobbyUI() {
+  document.querySelector('#lobby .btn-row').style.display = 'flex';
+  document.getElementById('color-select').style.display = 'none';
+  document.getElementById('join-form').style.display = 'none';
+  document.getElementById('room-info').style.display = 'none';
+  setConnectionStatus('');
+}
+
+function createGame(color) {
+  roomCode = generateRoomCode();
+  isHost = true;
+  myColor = color;
+  chatHistory = [];
+
+  peer = new Peer(roomCode, { debug: 0 });
+
+  peer.on('open', id => {
+    document.getElementById('room-code').textContent = id;
+    const url = window.location.origin + window.location.pathname + '?room=' + id;
+    document.getElementById('share-url').textContent = url;
+    document.getElementById('room-info').style.display = 'block';
+    setConnectionStatus('Waiting for opponent...', '');
+  });
+
+  peer.on('connection', handleConnection);
+  peer.on('error', handlePeerError);
+}
+
+function joinGame(code) {
+  roomCode = code.toUpperCase().trim();
+  if (roomCode.length !== 6) {
+    setConnectionStatus('Invalid room code', 'error');
+    return;
+  }
+  isHost = false;
+  chatHistory = [];
+
+  peer = new Peer({ debug: 0 });
+
+  peer.on('open', () => {
+    setConnectionStatus('Connecting...', '');
+    conn = peer.connect(roomCode, { reliable: true });
+    setupConnection(conn);
+  });
+
+  peer.on('error', handlePeerError);
+}
+
+function handleConnection(connection) {
+  if (conn) {
+    connection.close();
+    return;
+  }
+  conn = connection;
+  setupConnection(conn);
+}
+
+function setupConnection(connection) {
+  connection.on('open', () => {
+    connected = true;
+    if (reconnectTimer) {
+      clearInterval(reconnectTimer);
+      reconnectTimer = null;
+    }
+    setConnectionStatus('Connected!', 'connected');
+    updateConnIndicator('connected');
+
+    if (isHost) {
+      sendMessage({ type: 'colorChoice', hostColor: myColor });
+      initGame();
+      sendState();
+      hideLobby();
+      addSystemMessage('Opponent connected');
+    }
+  });
+
+  connection.on('data', handleMessage);
+
+  connection.on('close', () => {
+    connected = false;
+    updateConnIndicator('disconnected');
+    addSystemMessage('Opponent disconnected');
+    setMsg('Opponent disconnected. Waiting for reconnect...');
+
+    if (!isHost && roomCode) {
+      attemptReconnect();
+    }
+  });
+
+  connection.on('error', err => {
+    console.error('Connection error:', err);
+  });
+}
+
+function attemptReconnect() {
+  if (isHost || connected || reconnectTimer) return;
+
+  reconnectTimer = setInterval(() => {
+    if (connected) {
+      clearInterval(reconnectTimer);
+      reconnectTimer = null;
+      return;
+    }
+    updateConnIndicator('connecting');
+    conn = peer.connect(roomCode, { reliable: true });
+    setupConnection(conn);
+  }, 3000);
+}
+
+function handlePeerError(err) {
+  console.error('Peer error:', err);
+  if (err.type === 'peer-unavailable') {
+    setConnectionStatus('Room not found', 'error');
+  } else if (err.type === 'unavailable-id') {
+    setConnectionStatus('Room code already in use. Try again.', 'error');
+    roomCode = null;
+  } else {
+    setConnectionStatus('Connection error: ' + err.type, 'error');
+  }
+}
+
+function handleMessage(data) {
+  switch (data.type) {
+    case 'colorChoice':
+      myColor = data.hostColor === 1 ? 2 : 1;
+      initGame();
+      hideLobby();
+      addSystemMessage('Connected! You are ' + (myColor === 1 ? 'Black' : 'White'));
+      break;
+
+    case 'move':
+      if (isHost) {
+        if (current === 2 && placeStoneLocal(data.r, data.c)) {
+          sendState();
+        }
+      } else {
+        placeStoneLocal(data.r, data.c);
+      }
+      break;
+
+    case 'pass':
+      if (isHost) {
+        if (current === 2) {
+          doPassLocal();
+          sendState();
+        }
+      } else {
+        doPassLocal();
+      }
+      break;
+
+    case 'state':
+      applyState(data);
+      break;
+
+    case 'toggleDead':
+      toggleDeadLocal(data.r, data.c);
+      if (isHost) sendState();
+      break;
+
+    case 'countScore':
+      calculateScoreLocal();
+      if (isHost) sendState();
+      break;
+
+    case 'resumePlay':
+      resumePlayLocal();
+      if (isHost) sendState();
+      break;
+
+    case 'resign':
+      handleRemoteResign(data.color);
+      break;
+
+    case 'chat':
+      receiveChat(data.text, data.color);
+      break;
+
+    case 'newGame':
+      if (!isHost) {
+        initGame();
+        addSystemMessage('Host started a new game');
+      }
+      break;
+  }
+}
+
+function sendMessage(msg) {
+  if (conn && connected) {
+    conn.send(msg);
+  }
+}
+
+function sendState() {
+  if (!isHost) return;
+  sendMessage({
+    type: 'state',
+    board: serializeBoard(board),
+    current,
+    blackCap,
+    whiteCap,
+    prevBoard: prevBoard ? serializeBoard(prevBoard) : null,
+    passCount,
+    phase,
+    deadSet: Array.from(deadSet),
+    lastMove
+  });
+}
+
+function applyState(state) {
+  board = deserializeBoard(state.board);
+  current = state.current;
+  blackCap = state.blackCap;
+  whiteCap = state.whiteCap;
+  prevBoard = state.prevBoard ? deserializeBoard(state.prevBoard) : null;
+  passCount = state.passCount;
+  phase = state.phase;
+  deadSet = new Set(state.deadSet);
+  lastMove = state.lastMove;
+  tmap = null;
+
+  document.getElementById('scoring-panel').style.display = phase === 'scoring' ? 'block' : 'none';
+  document.getElementById('pass-btn').disabled = phase !== 'play';
+
+  updateInfo();
+  draw();
+}
+
+function serializeBoard(b) {
+  return b.map(row => Array.from(row));
+}
+
+function deserializeBoard(data) {
+  return data.map(row => new Int8Array(row));
+}
+
+function handleRemoteResign(resignColor) {
+  const winner = resignColor === 1 ? '⚪ White' : '⚫ Black';
+  const res = document.getElementById('result');
+  res.style.display = 'block';
+  res.innerHTML = `<h2>${winner} wins by resignation</h2>`;
+  phase = 'done';
+  updateInfo();
+  addSystemMessage((resignColor === 1 ? 'Black' : 'White') + ' resigned');
+}
+
+// Local versions of game actions (no network send)
+function placeStoneLocal(r, c) {
+  if (phase !== 'play' || board[r][c] !== 0) return false;
+  const opp = current === 1 ? 2 : 1;
+  const nb  = copyBoard(board);
+  nb[r][c]  = current;
+
+  let captured = 0;
+  for (const [nr, nc] of nbrs(r, c)) {
+    if (nb[nr][nc] === opp) {
+      const grp = getGroup(nr, nc, nb);
+      if (!hasLiberty(grp, nb)) {
+        for (const [gr, gc] of grp) { nb[gr][gc] = 0; captured++; }
+      }
+    }
+  }
+
+  if (!hasLiberty(getGroup(r, c, nb), nb)) { setMsg('Illegal move: suicide'); return false; }
+  if (prevBoard && boardsEqual(nb, prevBoard)) { setMsg('Illegal move: ko'); return false; }
+
+  prevBoard = copyBoard(board);
+  board     = nb;
+  if (current === 1) blackCap += captured;
+  else               whiteCap += captured;
+
+  lastMove  = [r, c];
+  passCount = 0;
+  current   = opp;
+  setMsg('');
+  updateInfo();
+  draw();
+  return true;
+}
+
+function doPassLocal() {
+  if (phase !== 'play') return;
+  prevBoard = null;
+  lastMove  = null;
+  passCount++;
+  if (passCount >= 2) { enterScoring(); return; }
+  current = current === 1 ? 2 : 1;
+  setMsg((current === 1 ? 'White' : 'Black') + ' passed.');
+  updateInfo();
+  draw();
+}
+
+function toggleDeadLocal(r, c) {
+  if (board[r][c] === 0) return;
+  const grp  = getGroup(r, c, board);
+  const key0 = grp[0][0] * SIZE + grp[0][1];
+  const was   = deadSet.has(key0);
+  for (const [gr, gc] of grp) {
+    const k = gr * SIZE + gc;
+    was ? deadSet.delete(k) : deadSet.add(k);
+  }
+  tmap = null;
+  draw();
+}
+
+function calculateScoreLocal() {
+  const { tmap: t, deadByColor, blackTerr, whiteTerr } = computeScore();
+  tmap = t;
+
+  const bScore = blackTerr + blackCap + deadByColor[2];
+  const wScore = whiteTerr + whiteCap + deadByColor[1] + KOMI;
+
+  const winner = bScore > wScore ? 'Black' : 'White';
+  const margin = Math.abs(bScore - wScore).toFixed(1);
+
+  const resultDiv = document.getElementById('result');
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = `
+    <h2>${winner === 'Black' ? '⚫' : '⚪'} ${winner} wins by ${margin} points</h2>
+    <table>
+      <tr><th></th><th>Territory</th><th>Captures</th><th>Dead opp.</th><th>Score</th></tr>
+      <tr>
+        <td>⚫ Black</td><td>${blackTerr}</td><td>${blackCap}</td><td>${deadByColor[2]}</td>
+        <td><strong>${bScore}</strong></td>
+      </tr>
+      <tr>
+        <td>⚪ White</td><td>${whiteTerr}</td><td>${whiteCap}</td><td>${deadByColor[1]}</td>
+        <td><strong>${wScore.toFixed(1)}</strong> (incl. ${KOMI} komi)</td>
+      </tr>
+    </table>`;
+  phase = 'done';
+  draw();
+}
+
+function resumePlayLocal() {
+  phase     = 'play';
+  passCount = 0;
+  deadSet   = new Set();
+  tmap      = null;
+  document.getElementById('scoring-panel').style.display = 'none';
+  document.getElementById('result').style.display        = 'none';
+  document.getElementById('pass-btn').disabled           = false;
+  setMsg('');
+  updateInfo();
+  draw();
+}
+
+// Chat functions
+function addSystemMessage(text) {
+  chatHistory.push({ type: 'system', text });
+  renderChat();
+}
+
+function sendChat(text) {
+  if (!text.trim() || !connected) return;
+  chatHistory.push({ type: myColor === 1 ? 'black' : 'white', text: text.trim() });
+  renderChat();
+  sendMessage({ type: 'chat', text: text.trim(), color: myColor });
+}
+
+function receiveChat(text, color) {
+  chatHistory.push({ type: color === 1 ? 'black' : 'white', text });
+  renderChat();
+}
+
+function renderChat() {
+  const container = document.getElementById('chat-messages');
+  container.innerHTML = chatHistory.map(msg => {
+    const cls = msg.type === 'system' ? 'msg-system' : 'msg-' + msg.type;
+    const prefix = msg.type === 'system' ? '' : (msg.type === 'black' ? '⚫ ' : '⚪ ');
+    return `<div class="msg ${cls}">${prefix}${escapeHtml(msg.text)}</div>`;
+  }).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -192,48 +875,53 @@ function boardsEqual(a, b) {
 
 // ── Moves ────────────────────────────────────────────────────────────────────
 function placeStone(r, c) {
-  if (phase !== 'play' || board[r][c] !== 0) return false;
-  const opp = current === 1 ? 2 : 1;
-  const nb  = copyBoard(board);
-  nb[r][c]  = current;
-
-  let captured = 0;
-  for (const [nr, nc] of nbrs(r, c)) {
-    if (nb[nr][nc] === opp) {
-      const grp = getGroup(nr, nc, nb);
-      if (!hasLiberty(grp, nb)) {
-        for (const [gr, gc] of grp) { nb[gr][gc] = 0; captured++; }
-      }
-    }
+  // In online mode, enforce turn
+  if (myColor !== 0 && current !== myColor) {
+    setMsg('Not your turn');
+    return false;
   }
 
-  if (!hasLiberty(getGroup(r, c, nb), nb)) { setMsg('Illegal move: suicide'); return false; }
-  if (prevBoard && boardsEqual(nb, prevBoard)) { setMsg('Illegal move: ko'); return false; }
+  if (phase !== 'play' || board[r][c] !== 0) return false;
 
-  prevBoard = copyBoard(board);
-  board     = nb;
-  if (current === 1) blackCap += captured;
-  else               whiteCap += captured;
+  // In online mode as guest, send move request to host
+  if (myColor !== 0 && !isHost) {
+    sendMessage({ type: 'move', r, c });
+    return true; // Optimistically return, host will sync state
+  }
 
-  lastMove  = [r, c];
-  passCount = 0;
-  current   = opp;
-  setMsg('');
-  updateInfo();
-  draw();
-  return true;
+  // Execute move locally (local game or host)
+  const result = placeStoneLocal(r, c);
+
+  // If host, sync state to guest
+  if (result && isHost && connected) {
+    sendState();
+  }
+
+  return result;
 }
 
 function doPass() {
   if (phase !== 'play') return;
-  prevBoard = null;
-  lastMove  = null;
-  passCount++;
-  if (passCount >= 2) { enterScoring(); return; }
-  current = current === 1 ? 2 : 1;
-  setMsg((current === 1 ? 'White' : 'Black') + ' passed.');
-  updateInfo();
-  draw();
+
+  // In online mode, enforce turn
+  if (myColor !== 0 && current !== myColor) {
+    setMsg('Not your turn');
+    return;
+  }
+
+  // In online mode as guest, send pass request to host
+  if (myColor !== 0 && !isHost) {
+    sendMessage({ type: 'pass' });
+    return;
+  }
+
+  // Execute pass locally (local game or host)
+  doPassLocal();
+
+  // If host, sync state to guest
+  if (isHost && connected) {
+    sendState();
+  }
 }
 
 function enterScoring() {
@@ -250,15 +938,15 @@ function enterScoring() {
 // ── Dead stone toggle ────────────────────────────────────────────────────────
 function toggleDead(r, c) {
   if (board[r][c] === 0) return;
-  const grp  = getGroup(r, c, board);
-  const key0 = grp[0][0] * SIZE + grp[0][1];
-  const was   = deadSet.has(key0);
-  for (const [gr, gc] of grp) {
-    const k = gr * SIZE + gc;
-    was ? deadSet.delete(k) : deadSet.add(k);
+
+  // Execute locally
+  toggleDeadLocal(r, c);
+
+  // Sync in online mode
+  if (myColor !== 0 && connected) {
+    sendMessage({ type: 'toggleDead', r, c });
+    if (isHost) sendState();
   }
-  tmap = null;
-  draw();
 }
 
 // ── Scoring ──────────────────────────────────────────────────────────────────
@@ -314,32 +1002,19 @@ function computeScore() {
 }
 
 function calculateScore() {
-  const { tmap: t, deadByColor, blackTerr, whiteTerr } = computeScore();
-  tmap = t;
+  // In online mode as guest, send request to host
+  if (myColor !== 0 && !isHost) {
+    sendMessage({ type: 'countScore' });
+    return;
+  }
 
-  const bScore = blackTerr + blackCap + deadByColor[2];
-  const wScore = whiteTerr + whiteCap + deadByColor[1] + KOMI;
+  // Execute locally (local game or host)
+  calculateScoreLocal();
 
-  const winner = bScore > wScore ? 'Black' : 'White';
-  const margin = Math.abs(bScore - wScore).toFixed(1);
-
-  const resultDiv = document.getElementById('result');
-  resultDiv.style.display = 'block';
-  resultDiv.innerHTML = `
-    <h2>${winner === 'Black' ? '⚫' : '⚪'} ${winner} wins by ${margin} points</h2>
-    <table>
-      <tr><th></th><th>Territory</th><th>Captures</th><th>Dead opp.</th><th>Score</th></tr>
-      <tr>
-        <td>⚫ Black</td><td>${blackTerr}</td><td>${blackCap}</td><td>${deadByColor[2]}</td>
-        <td><strong>${bScore}</strong></td>
-      </tr>
-      <tr>
-        <td>⚪ White</td><td>${whiteTerr}</td><td>${whiteCap}</td><td>${deadByColor[1]}</td>
-        <td><strong>${wScore.toFixed(1)}</strong> (incl. ${KOMI} komi)</td>
-      </tr>
-    </table>`;
-
-  draw();
+  // If host, sync state to guest
+  if (isHost && connected) {
+    sendState();
+  }
 }
 
 // ── Coordinate helpers ───────────────────────────────────────────────────────
@@ -492,7 +1167,18 @@ function drawStone(r, c, color, alpha) {
 function updateInfo() {
   const el = document.getElementById('turn-display');
   if (phase === 'play') {
-    el.textContent = current === 1 ? '⚫ Black\'s turn' : '⚪ White\'s turn';
+    if (myColor === 0) {
+      // Local game
+      el.textContent = current === 1 ? '⚫ Black\'s turn' : '⚪ White\'s turn';
+    } else {
+      // Online game
+      const isMyTurn = current === myColor;
+      const colorName = current === 1 ? 'Black' : 'White';
+      const colorIcon = current === 1 ? '⚫' : '⚪';
+      el.textContent = isMyTurn
+        ? `${colorIcon} Your turn (${colorName})`
+        : `${colorIcon} Opponent's turn (${colorName})`;
+    }
   } else if (phase === 'scoring') {
     el.textContent = 'Scoring — mark dead stones';
   } else {
@@ -524,32 +1210,146 @@ document.getElementById('pass-btn').addEventListener('click', doPass);
 
 document.getElementById('resign-btn').addEventListener('click', () => {
   if (phase !== 'play') return;
-  const winner = current === 1 ? '⚪ White' : '⚫ Black';
+
+  // In online mode, enforce turn for resignation
+  if (myColor !== 0 && current !== myColor) {
+    setMsg('Not your turn to resign');
+    return;
+  }
+
+  const resignColor = myColor !== 0 ? myColor : current;
+  const winner = resignColor === 1 ? '⚪ White' : '⚫ Black';
   const res = document.getElementById('result');
   res.style.display = 'block';
   res.innerHTML = `<h2>${winner} wins by resignation</h2>`;
   phase = 'done';
   updateInfo();
+
+  // Sync resignation in online mode
+  if (myColor !== 0 && connected) {
+    sendMessage({ type: 'resign', color: resignColor });
+    addSystemMessage('You resigned');
+  }
 });
 
-document.getElementById('new-btn').addEventListener('click', initGame);
+document.getElementById('new-btn').addEventListener('click', () => {
+  if (myColor !== 0) {
+    // Online mode - only host can start new game
+    if (!isHost) {
+      setMsg('Only host can start a new game');
+      return;
+    }
+    initGame();
+    sendMessage({ type: 'newGame' });
+    sendState();
+    addSystemMessage('New game started');
+  } else {
+    initGame();
+  }
+});
 
 document.getElementById('score-btn').addEventListener('click', calculateScore);
 
 document.getElementById('resume-btn').addEventListener('click', () => {
-  phase     = 'play';
-  passCount = 0;
-  deadSet   = new Set();
-  tmap      = null;
-  document.getElementById('scoring-panel').style.display = 'none';
-  document.getElementById('result').style.display        = 'none';
-  document.getElementById('pass-btn').disabled           = false;
-  setMsg('');
-  updateInfo();
-  draw();
+  // In online mode as guest, send request to host
+  if (myColor !== 0 && !isHost) {
+    sendMessage({ type: 'resumePlay' });
+    return;
+  }
+
+  // Execute locally (local game or host)
+  resumePlayLocal();
+
+  // If host, sync state to guest
+  if (isHost && connected) {
+    sendState();
+  }
 });
 
-initGame();
+// ── Lobby Events ─────────────────────────────────────────────────────────────
+document.getElementById('create-btn').addEventListener('click', () => {
+  document.querySelector('#lobby .btn-row').style.display = 'none';
+  document.getElementById('color-select').style.display = 'block';
+});
+
+document.getElementById('create-cancel-btn').addEventListener('click', resetLobbyUI);
+
+document.getElementById('create-confirm-btn').addEventListener('click', () => {
+  const color = parseInt(document.querySelector('input[name="color"]:checked').value);
+  document.getElementById('color-select').style.display = 'none';
+  createGame(color);
+});
+
+document.getElementById('join-btn').addEventListener('click', () => {
+  document.querySelector('#lobby .btn-row').style.display = 'none';
+  document.getElementById('join-form').style.display = 'flex';
+  document.getElementById('room-input').focus();
+});
+
+document.getElementById('join-cancel-btn').addEventListener('click', resetLobbyUI);
+
+document.getElementById('connect-btn').addEventListener('click', () => {
+  const code = document.getElementById('room-input').value;
+  if (code) joinGame(code);
+});
+
+document.getElementById('room-input').addEventListener('keypress', e => {
+  if (e.key === 'Enter') {
+    const code = document.getElementById('room-input').value;
+    if (code) joinGame(code);
+  }
+});
+
+document.getElementById('local-btn').addEventListener('click', () => {
+  myColor = 0;
+  isHost = false;
+  connected = false;
+  initGame();
+  hideLobby();
+  document.getElementById('chat-panel').style.display = 'none';
+  updateConnIndicator('');
+});
+
+document.getElementById('copy-btn').addEventListener('click', () => {
+  const url = document.getElementById('share-url').textContent;
+  navigator.clipboard.writeText(url).then(() => {
+    document.getElementById('copy-btn').textContent = 'Copied!';
+    setTimeout(() => {
+      document.getElementById('copy-btn').textContent = 'Copy Link';
+    }, 2000);
+  });
+});
+
+// Chat form
+document.getElementById('chat-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  sendChat(input.value);
+  input.value = '';
+});
+
+// URL parameter handling
+function checkURLParams() {
+  const params = new URLSearchParams(window.location.search);
+  const room = params.get('room');
+  if (room) {
+    document.getElementById('room-input').value = room;
+    document.querySelector('#lobby .btn-row').style.display = 'none';
+    document.getElementById('join-form').style.display = 'flex';
+    joinGame(room);
+  }
+}
+
+// Warn before leaving during active game
+window.addEventListener('beforeunload', e => {
+  if (connected && phase === 'play') {
+    e.preventDefault();
+    e.returnValue = 'Game in progress. Leave anyway?';
+  }
+});
+
+// Initialize
+checkAccess();
 </script>
 </body>
 </html>
