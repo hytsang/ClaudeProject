@@ -70,6 +70,7 @@ function createRoom() {
 
   peer.on('connection', connection => {
     log('SUCCESS: Someone is connecting!', 'success');
+    log('Connection object: ' + (connection ? 'exists' : 'null'), 'info');
     conn = connection;
     setupConnection();
   });
@@ -99,6 +100,7 @@ function joinRoom() {
     log('Connecting to room: ' + roomCode, 'info');
 
     conn = peer.connect(roomCode);
+    log('Connection object created: ' + (conn ? 'yes' : 'no'), 'info');
     setupConnection();
   });
 
@@ -108,7 +110,10 @@ function joinRoom() {
 }
 
 function setupConnection() {
-  log('Setting up connection...', 'info');
+  log('=== Setting up connection ===', 'info');
+  log('conn exists: ' + !!conn, 'info');
+  log('conn.open: ' + conn.open, 'info');
+  log('conn.type: ' + conn.type, 'info');
 
   conn.on('open', () => {
     log('SUCCESS: Connection established!', 'success');
@@ -129,19 +134,38 @@ function setupConnection() {
 
   // Monitor ICE state
   conn.on('iceStateChanged', state => {
-    log('ICE state: ' + state, state === 'connected' ? 'success' : 'info');
+    log('ICE state changed: ' + state, state === 'connected' ? 'success' : 'info');
   });
 
-  // Check connection state after 5 seconds
-  setTimeout(() => {
-    if (conn && conn.peerConnection) {
+  // Check connection state every 2 seconds
+  let checkCount = 0;
+  const checkInterval = setInterval(() => {
+    checkCount++;
+    log('--- Check #' + checkCount + ' ---', 'info');
+    log('conn.open: ' + conn.open, 'info');
+
+    if (conn.peerConnection) {
       const pc = conn.peerConnection;
-      log('ICE Connection State: ' + pc.iceConnectionState, 'info');
-      log('ICE Gathering State: ' + pc.iceGatheringState, 'info');
-      log('Connection State: ' + pc.connectionState, 'info');
-      log('Signaling State: ' + pc.signalingState, 'info');
+      log('ICE: ' + pc.iceConnectionState + ', Gathering: ' + pc.iceGatheringState, 'info');
+      log('Connection: ' + pc.connectionState + ', Signaling: ' + pc.signalingState, 'info');
+
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        log('ICE Connected!', 'success');
+        clearInterval(checkInterval);
+      }
+      if (pc.iceConnectionState === 'failed') {
+        log('ICE Failed!', 'error');
+        clearInterval(checkInterval);
+      }
+    } else {
+      log('peerConnection not yet created', 'info');
     }
-  }, 5000);
+
+    if (checkCount >= 10) {
+      log('Stopping checks after 20 seconds', 'info');
+      clearInterval(checkInterval);
+    }
+  }, 2000);
 }
 </script>
 </body>
