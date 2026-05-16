@@ -45,31 +45,40 @@ function generateCode() {
   return code;
 }
 
-const PEER_CONFIG = {
-  debug: 3,
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun.cloudflare.com:3478' },
-      // Metered Open Relay TURN servers (free)
-      {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      }
-    ]
+// Test different ICE configurations
+const ICE_CONFIGS = {
+  // Option 1: PeerJS defaults (includes their TURN)
+  peerjs_default: {
+    debug: 3
+  },
+  // Option 2: Google STUN only
+  stun_only: {
+    debug: 3,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    }
+  },
+  // Option 3: With Metered TURN
+  metered_turn: {
+    debug: 3,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        {
+          urls: ['turn:a.relay.metered.ca:80', 'turn:a.relay.metered.ca:443', 'turn:a.relay.metered.ca:443?transport=tcp'],
+          username: 'e8dd65c92c80d446c9d3a23d',
+          credential: 'uWdWNmkhvyqTEj3I'
+        }
+      ]
+    }
   }
 };
+
+// Try PeerJS defaults first (their cloud includes TURN)
+const PEER_CONFIG = ICE_CONFIGS.peerjs_default;
 
 function createRoom() {
   const roomCode = generateCode();
@@ -151,6 +160,22 @@ function setupConnection() {
   conn.on('iceStateChanged', state => {
     log('ICE state changed: ' + state, state === 'connected' ? 'success' : 'info');
   });
+
+  // Log ICE candidates to see what types we're getting
+  setTimeout(() => {
+    if (conn.peerConnection) {
+      conn.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          const c = event.candidate;
+          const type = c.type || 'unknown';
+          const protocol = c.protocol || '';
+          log('ICE candidate: ' + type + ' ' + protocol + ' ' + (c.address || ''), 'info');
+        } else {
+          log('ICE gathering complete', 'success');
+        }
+      };
+    }
+  }, 100);
 
   // Check connection state every 2 seconds
   let checkCount = 0;
