@@ -45,12 +45,10 @@ function generateCode() {
   return code;
 }
 
-// Metered.ca TURN servers - force relay mode for testing
+// Metered.ca TURN servers
 const PEER_CONFIG = {
   debug: 3,
   config: {
-    iceTransportPolicy: 'relay',  // Force TURN relay only
-    iceCandidatePoolSize: 10,     // Pre-gather candidates
     iceServers: [
       { urls: 'stun:stun.relay.metered.ca:80' },
       {
@@ -75,6 +73,12 @@ const PEER_CONFIG = {
       }
     ]
   }
+};
+
+// Connection options - use JSON serialization for reliability
+const CONN_OPTIONS = {
+  serialization: 'json',
+  reliable: true
 };
 
 // Test TURN connectivity on page load
@@ -155,8 +159,9 @@ function joinRoom() {
     log('Connected to PeerJS server with ID: ' + id, 'success');
     log('Connecting to room: ' + roomCode, 'info');
 
-    conn = peer.connect(roomCode);
+    conn = peer.connect(roomCode, CONN_OPTIONS);
     log('Connection object created: ' + (conn ? 'yes' : 'no'), 'info');
+    log('Connection options: ' + JSON.stringify(CONN_OPTIONS), 'info');
     setupConnection();
   });
 
@@ -193,10 +198,12 @@ function setupConnection() {
     log('ICE state changed: ' + state, state === 'connected' ? 'success' : 'info');
   });
 
-  // Log ICE candidates to see what types we're getting
+  // Log ICE candidates and track signaling
   setTimeout(() => {
     if (conn.peerConnection) {
-      conn.peerConnection.onicecandidate = (event) => {
+      const pc = conn.peerConnection;
+
+      pc.onicecandidate = (event) => {
         if (event.candidate) {
           const c = event.candidate;
           const type = c.type || 'unknown';
@@ -206,8 +213,26 @@ function setupConnection() {
           log('ICE gathering complete', 'success');
         }
       };
+
+      pc.onsignalingstatechange = () => {
+        log('Signaling state: ' + pc.signalingState, 'info');
+      };
+
+      pc.onconnectionstatechange = () => {
+        log('Connection state: ' + pc.connectionState, pc.connectionState === 'connected' ? 'success' : 'info');
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        log('ICE connection: ' + pc.iceConnectionState, pc.iceConnectionState === 'connected' ? 'success' : 'info');
+      };
+
+      // Log current SDP state
+      log('Local SDP: ' + (pc.localDescription ? pc.localDescription.type : 'none'), 'info');
+      log('Remote SDP: ' + (pc.remoteDescription ? pc.remoteDescription.type : 'none'), 'info');
+    } else {
+      log('peerConnection not available yet', 'error');
     }
-  }, 100);
+  }, 500);
 
   // Check connection state every 2 seconds
   let checkCount = 0;
