@@ -266,6 +266,7 @@
       <button id="copy-btn">Copy Link</button>
     </div>
     <div id="connection-status"></div>
+    <button id="retry-btn" style="display:none; margin-top: 12px;">Retry Connection</button>
   </div>
 
   <!-- Game UI (hidden until game starts) -->
@@ -388,6 +389,20 @@ let roomCode = null;       // Current room code
 let connected = false;     // Connection status
 let reconnectTimer = null; // For auto-reconnect
 let chatHistory = [];      // Chat message history
+let joinTimeout = null;    // Timeout for joining
+
+// PeerJS configuration with ICE servers for NAT traversal
+const PEER_CONFIG = {
+  debug: 1,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' }
+    ]
+  }
+};
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 function initGame() {
@@ -461,7 +476,7 @@ function createGame(color) {
   myColor = color;
   chatHistory = [];
 
-  peer = new Peer(roomCode, { debug: 0 });
+  peer = new Peer(roomCode, PEER_CONFIG);
 
   peer.on('open', id => {
     document.getElementById('room-code').textContent = id;
@@ -484,12 +499,26 @@ function joinGame(code) {
   isHost = false;
   chatHistory = [];
 
-  peer = new Peer({ debug: 0 });
+  // Clear any existing timeout
+  if (joinTimeout) {
+    clearTimeout(joinTimeout);
+    joinTimeout = null;
+  }
+
+  peer = new Peer(PEER_CONFIG);
 
   peer.on('open', () => {
     setConnectionStatus('Connecting...', '');
     conn = peer.connect(roomCode, { reliable: true });
     setupConnection(conn);
+
+    // Set timeout for connection
+    joinTimeout = setTimeout(() => {
+      if (!connected) {
+        setConnectionStatus('Connection timed out. Check room code and try again.', 'error');
+        showRetryButton();
+      }
+    }, 15000);
   });
 
   peer.on('error', handlePeerError);
@@ -511,6 +540,11 @@ function setupConnection(connection) {
       clearInterval(reconnectTimer);
       reconnectTimer = null;
     }
+    if (joinTimeout) {
+      clearTimeout(joinTimeout);
+      joinTimeout = null;
+    }
+    hideRetryButton();
     setConnectionStatus('Connected!', 'connected');
     updateConnIndicator('connected');
 
@@ -558,14 +592,46 @@ function attemptReconnect() {
 
 function handlePeerError(err) {
   console.error('Peer error:', err);
-  if (err.type === 'peer-unavailable') {
-    setConnectionStatus('Room not found', 'error');
-  } else if (err.type === 'unavailable-id') {
-    setConnectionStatus('Room code already in use. Try again.', 'error');
-    roomCode = null;
-  } else {
-    setConnectionStatus('Connection error: ' + err.type, 'error');
+
+  // Clear timeout on error
+  if (joinTimeout) {
+    clearTimeout(joinTimeout);
+    joinTimeout = null;
   }
+
+  if (err.type === 'peer-unavailable') {
+    setConnectionStatus('Room not found. Check the code and try again.', 'error');
+    showRetryButton();
+  } else if (err.type === 'unavailable-id') {
+    setConnectionStatus('Room code in use. Creating new code...', 'error');
+    roomCode = null;
+    // Auto-retry with new code for host
+    if (isHost) {
+      setTimeout(() => createGame(myColor), 1000);
+    }
+  } else if (err.type === 'network') {
+    setConnectionStatus('Network error. Check your internet connection.', 'error');
+    showRetryButton();
+  } else if (err.type === 'server-error') {
+    setConnectionStatus('Server unavailable. Try again in a moment.', 'error');
+    showRetryButton();
+  } else if (err.type === 'disconnected') {
+    setConnectionStatus('Disconnected from server. Reconnecting...', 'error');
+    showRetryButton();
+  } else {
+    setConnectionStatus('Connection failed: ' + err.type, 'error');
+    showRetryButton();
+  }
+}
+
+function showRetryButton() {
+  const retryBtn = document.getElementById('retry-btn');
+  if (retryBtn) retryBtn.style.display = 'inline-block';
+}
+
+function hideRetryButton() {
+  const retryBtn = document.getElementById('retry-btn');
+  if (retryBtn) retryBtn.style.display = 'none';
 }
 
 function handleMessage(data) {
@@ -1318,6 +1384,25 @@ document.getElementById('copy-btn').addEventListener('click', () => {
       document.getElementById('copy-btn').textContent = 'Copy Link';
     }, 2000);
   });
+});
+
+document.getElementById('retry-btn').addEventListener('click', () => {
+  hideRetryButton();
+  // Clean up existing peer
+  if (peer) {
+    peer.destroy();
+    peer = null;
+  }
+  conn = null;
+  connected = false;
+
+  if (isHost) {
+    createGame(myColor);
+  } else if (roomCode) {
+    joinGame(roomCode);
+  } else {
+    resetLobbyUI();
+  }
 });
 
 // Chat form
