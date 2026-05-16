@@ -37,3 +37,16 @@ Each game is a single HTML file with inline CSS and JavaScript. All game state l
 - `applyState()` — deserializes and applies received state
 - Message types: `move`, `pass`, `resign`, `state`, `toggleDead`, `countScore`, `resumePlay`, `chat`, `newGame`
 - Reconnection: guest auto-retries every 3 seconds if disconnected
+- Connection options: `{ serialization: 'json', reliable: true }` required for TURN relay compatibility
+
+### go.html hosting & access
+- Hosted on GitHub Pages: https://hytsang.github.io/ClaudeProject/go.html
+- Password protected with SHA-256 hashed access code (stored in `ACCESS_HASH`)
+- TURN servers provided by Metered.ca (free tier, 500GB/month) for NAT traversal
+- TURN credentials stored in `PEER_CONFIG.config.iceServers`
+
+### Updating TURN credentials
+If TURN stops working, get new credentials from metered.ca/stun-turn:
+1. Sign up for free account
+2. Go to Dashboard → TURN → Free TURN Server Credentials
+3. Update the `username` and `credential` fields in `PEER_CONFIG`
