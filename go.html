@@ -394,7 +394,10 @@ let joinTimeout = null;    // Timeout for joining
 // PeerJS configuration with ICE servers for NAT traversal
 // Includes TURN servers for users behind strict NAT/firewalls
 const PEER_CONFIG = {
-  debug: 1,
+  host: '0.peerjs.com',
+  port: 443,
+  secure: true,
+  debug: 2,  // Verbose debugging
   config: {
     iceServers: [
       // STUN servers for NAT discovery
@@ -492,9 +495,11 @@ function createGame(color) {
   myColor = color;
   chatHistory = [];
 
+  console.log('[Host] Creating peer with ID:', roomCode);
   peer = new Peer(roomCode, PEER_CONFIG);
 
   peer.on('open', id => {
+    console.log('[Host] Peer opened with ID:', id);
     document.getElementById('room-code').textContent = id;
     const url = window.location.origin + window.location.pathname + '?room=' + id;
     document.getElementById('share-url').textContent = url;
@@ -502,8 +507,20 @@ function createGame(color) {
     setConnectionStatus('Waiting for opponent...', '');
   });
 
-  peer.on('connection', handleConnection);
-  peer.on('error', handlePeerError);
+  peer.on('connection', conn => {
+    console.log('[Host] Incoming connection from:', conn.peer);
+    handleConnection(conn);
+  });
+
+  peer.on('error', err => {
+    console.error('[Host] Peer error:', err.type, err);
+    handlePeerError(err);
+  });
+
+  peer.on('disconnected', () => {
+    console.log('[Host] Disconnected from server, reconnecting...');
+    peer.reconnect();
+  });
 }
 
 function joinGame(code) {
@@ -521,16 +538,21 @@ function joinGame(code) {
     joinTimeout = null;
   }
 
+  console.log('[Guest] Creating peer to join room:', roomCode);
   peer = new Peer(PEER_CONFIG);
 
-  peer.on('open', () => {
+  peer.on('open', id => {
+    console.log('[Guest] Peer opened with ID:', id);
     setConnectionStatus('Finding room...', '');
+    console.log('[Guest] Connecting to room:', roomCode);
     conn = peer.connect(roomCode, { reliable: true });
+    console.log('[Guest] Connection object created:', conn);
     setupConnection(conn);
 
     // Update status after signaling
     setTimeout(() => {
       if (!connected) {
+        console.log('[Guest] Still not connected after 3s, waiting for ICE...');
         setConnectionStatus('Establishing connection...', '');
       }
     }, 3000);
@@ -538,13 +560,21 @@ function joinGame(code) {
     // Set timeout for connection (30 seconds to allow for TURN negotiation)
     joinTimeout = setTimeout(() => {
       if (!connected) {
+        console.error('[Guest] Connection timed out after 30s');
         setConnectionStatus('Connection timed out. Check room code and try again.', 'error');
         showRetryButton();
       }
     }, 30000);
   });
 
-  peer.on('error', handlePeerError);
+  peer.on('error', err => {
+    console.error('[Guest] Peer error:', err.type, err);
+    handlePeerError(err);
+  });
+
+  peer.on('disconnected', () => {
+    console.log('[Guest] Disconnected from server');
+  });
 }
 
 function handleConnection(connection) {
@@ -557,7 +587,10 @@ function handleConnection(connection) {
 }
 
 function setupConnection(connection) {
+  console.log('[Setup] Setting up connection handlers');
+
   connection.on('open', () => {
+    console.log('[Setup] Connection OPEN!');
     connected = true;
     if (reconnectTimer) {
       clearInterval(reconnectTimer);
@@ -580,11 +613,18 @@ function setupConnection(connection) {
     }
   });
 
-  connection.on('data', handleMessage);
+  connection.on('data', data => {
+    console.log('[Setup] Received data:', data.type);
+    handleMessage(data);
+  });
+
+  connection.on('error', err => {
+    console.error('[Setup] Connection error:', err);
+  });
 
   // Monitor ICE connection state for debugging
   connection.on('iceStateChanged', state => {
-    console.log('ICE state:', state);
+    console.log('[Setup] ICE state changed:', state);
     if (state === 'disconnected' || state === 'failed') {
       setConnectionStatus('Connection unstable, reconnecting...', '');
     }
